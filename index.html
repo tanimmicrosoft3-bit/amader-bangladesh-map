@@ -1,1 +1,93 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>আমাদের বাংলাদেশ</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+body{font-family:Arial,sans-serif;background:#f4f7f2;margin:0;padding:15px}
+h2{color:#08743d;text-align:center}
+select,input,button{width:100%;padding:12px;margin:6px 0;border:1px solid #ccc;border-radius:8px;font-size:16px}
+button{background:#08743d;color:white;border:0}
+#map{height:65vh;min-height:350px;margin-top:12px;border-radius:10px}
+</style>
+</head>
+<body>
+<h2>🇧🇩 আমাদের বাংলাদেশ</h2>
+<select id="division"><option value="">সব বিভাগ</option></select>
+<select id="district"><option value="">সব জেলা</option></select>
+<input id="upazila" list="suggestions" placeholder="উপজেলার নাম লিখুন">
+<datalist id="suggestions"></datalist>
+<button onclick="showMap()">মানচিত্র দেখুন</button>
+<button onclick="location.reload()">পুরো বাংলাদেশ</button>
+<button onclick="saveMap()">PNG ডাউনলোড</button>
+<div id="map"></div>
+<p id="status">মানচিত্র লোড হচ্ছে...</p>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script>
+const base="https://raw.githubusercontent.com/ifahimreza/bangladesh-geojson/main/src/data/";
+let D={},layer;
+const map=L.map('map').setView([23.7,90.3],7);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+attribution:'© OpenStreetMap'
+}).addTo(map);
+
+async function start(){
+try{
+const [a,b,c,g]=await Promise.all([
+fetch(base+'bd-divisions.json').then(r=>r.json()),
+fetch(base+'bd-districts.json').then(r=>r.json()),
+fetch(base+'bd-upazilas.json').then(r=>r.json()),
+fetch(base+'bangladesh.geojson').then(r=>r.json())
+]);
+D={divisions:a.divisions,districts:b.districts,upazilas:c.upazilas,geo:g};
+D.divisions.forEach(x=>division.add(new Option(x.bn_name||x.name,x.id)));
+division.onchange=fillDistricts;
+district.onchange=fillUpazilas;
+fillDistricts();fillUpazilas();showMap();
+}catch(e){status.textContent='ডেটা লোড হয়নি। ইন্টারনেট বা ডেটার লিংক পরীক্ষা করুন।'}
+}
+function fillDistricts(){
+district.innerHTML='<option value="">সব জেলা</option>';
+D.districts.filter(x=>!division.value||x.division_id===division.value)
+.forEach(x=>district.add(new Option(x.bn_name||x.name,x.id)));
+fillUpazilas();
+}
+function fillUpazilas(){
+suggestions.innerHTML='';
+D.upazilas.filter(x=>!district.value||x.district_id===district.value)
+.forEach(x=>suggestions.append(new Option(x.bn_name||x.name)));
+}
+function showMap(){
+if(!D.geo)return;
+const name=upazila.value.trim();
+const chosen=D.upazilas.find(x=>(x.bn_name||x.name)===name||x.name===name);
+const features=D.geo.features.filter(f=>{
+const p=f.properties||{};
+return (!division.value||p.division_id===division.value)&&
+(!district.value||p.district_id===district.value)&&
+(!chosen||p.upazila_id===chosen.id);
+});
+if(layer)map.removeLayer(layer);
+if(!features.length){status.textContent='নির্বাচিত এলাকার সীমানা পাওয়া যায়নি।';return}
+layer=L.geoJSON({type:'FeatureCollection',features},{
+style:{color:'#fff',weight:1,fillColor:'#168447',fillOpacity:.8},
+onEachFeature:(f,l)=>l.bindTooltip(f.properties.bn_name||f.properties.name||'উপজেলা')
+}).addTo(map);
+map.fitBounds(layer.getBounds(),{padding:[10,10]});
+status.textContent=features.length+'টি এলাকার সীমানা দেখানো হচ্ছে।';
+}
+async function saveMap(){
+try{
+const canvas=await html2canvas(document.getElementById('map'));
+const a=document.createElement('a');
+a.download='bangladesh-map.png';a.href=canvas.toDataURL('image/png');a.click();
+}catch(e){status.textContent='PNG তৈরি হয়নি। আবার চেষ্টা করুন।'}
+}
+start();
+</script>
+</body>
+</html>
